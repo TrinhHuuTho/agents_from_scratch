@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import inspect
+import asyncio
+import threading
 from typing import Any
 
 from agent_from_scratch.openrouter_client import OpenRouterClient
@@ -74,10 +77,44 @@ class SimpleAgent:
             ) from exc
 
         tool_definition = self.tools[tool_name]
-        tool_output = tool_definition.handler(**parsed_arguments)
+
+        handler = tool_definition.handler
+
+        def _run_coroutine_sync(coro):
+            try:
+                # If no running loop, run directly
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                return asyncio.run(coro)
+            else:
+                # Running loop exists (e.g. in async servers). Run the coroutine in a new thread.
+                result: dict[str, Any] = {}
+
+                def _target() -> None:
+                    result["value"] = asyncio.run(coro)
+
+                t = threading.Thread(target=_target)
+                t.start()
+                t.join()
+                return result.get("value")
+
+        if inspect.iscoroutinefunction(handler):
+            tool_output = _run_coroutine_sync(handler(**parsed_arguments))
+        else:
+            maybe = handler(**parsed_arguments)
+            if inspect.isawaitable(maybe):
+                tool_output = _run_coroutine_sync(maybe)
+            else:
+                tool_output = maybe
+
+        # Normalize output to a string (JSON-serialize structured results)
+        if isinstance(tool_output, (dict, list)):
+            content = json.dumps(tool_output)
+        else:
+            content = "" if tool_output is None else str(tool_output)
 
         return {
             "role": "tool",
             "tool_call_id": tool_call.get("id"),
-            "content": tool_output,
+            "content": content,
         }
