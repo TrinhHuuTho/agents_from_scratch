@@ -17,6 +17,11 @@ class Settings:
 
 
 def load_settings() -> Settings:
+    """Load application settings from the environment.
+
+    Returns:
+        Settings loaded from environment variables and .env files.
+    """
     load_dotenv()
 
     api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
