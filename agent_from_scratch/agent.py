@@ -1,31 +1,102 @@
 from __future__ import annotations
 
-import json
-import inspect
 import asyncio
+import inspect
+import json
 import threading
 from typing import Any
 
-from agent_from_scratch.openrouter_client import OpenRouterClient
-from agent_from_scratch.tools import ToolDefinition
+from langchain_core.tools import BaseTool
+
+from agent_from_scratch.chat_models import ChatModel
+
+
+def _tool_to_openai_schema(tool: BaseTool) -> dict[str, Any]:
+    """Convert a LangChain tool to an OpenAI tool schema.
+
+    Args:
+        tool: The LangChain tool to convert.
+
+    Returns:
+        An OpenAI-compatible tool payload.
+    """
+    args_schema = getattr(tool, "args_schema", None)
+    if args_schema is None:
+        parameters: dict[str, Any] = {"type": "object", "properties": {}}
+    elif hasattr(args_schema, "model_json_schema"):
+        parameters = args_schema.model_json_schema()
+    else:
+        parameters = args_schema.schema()
+
+    return {
+        "type": "function",
+        "function": {
+            "name": tool.name,
+            "description": tool.description or "",
+            "parameters": parameters,
+        },
+    }
+
+
+def _run_coroutine_sync(coro: Any) -> Any:
+    """Run a coroutine from synchronous code.
+
+    Args:
+        coro: The coroutine to execute.
+
+    Returns:
+        The coroutine result.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+    result: dict[str, Any] = {}
+
+    def _target() -> None:
+        result["value"] = asyncio.run(coro)
+
+    thread = threading.Thread(target=_target)
+    thread.start()
+    thread.join()
+    return result.get("value")
 
 
 class SimpleAgent:
+    """Drive a chat model until it produces a final answer."""
+
     def __init__(
         self,
-        client: OpenRouterClient,
+        client: ChatModel,
         system_prompt: str,
-        tools: dict[str, ToolDefinition] | None = None,
+        tools: dict[str, BaseTool] | None = None,
         max_iterations: int = 6,
     ) -> None:
+        """Initialize the agent.
+
+        Args:
+            client: Chat client used for completions.
+            system_prompt: Default system instruction to inject.
+            tools: Tool registry keyed by tool name.
+            max_iterations: Maximum tool-use iterations before failing.
+        """
         self.client = client
         self.system_prompt = system_prompt
         self.tools = tools or {}
         self.max_iterations = max_iterations
 
     def invoke(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        """Run the agent until it returns a final assistant message.
+
+        Args:
+            inputs: Dictionary containing a `messages` conversation list.
+
+        Returns:
+            The accumulated message list and the last assistant message.
+        """
         messages = self._build_messages(inputs)
-        tool_schemas = [tool.to_openai_tool() for tool in self.tools.values()]
+        tool_schemas = [_tool_to_openai_schema(tool) for tool in self.tools.values()]
 
         for _ in range(self.max_iterations):
             assistant_message = self.client.chat_completion(
@@ -47,6 +118,14 @@ class SimpleAgent:
         )
 
     def _build_messages(self, inputs: dict[str, Any]) -> list[dict[str, Any]]:
+        """Validate and normalize the incoming message list.
+
+        Args:
+            inputs: Raw agent inputs.
+
+        Returns:
+            A message list with a system prompt prepended when needed.
+        """
         raw_messages = list(inputs.get("messages", []))
         if not raw_messages:
             raise ValueError("invoke() requires a non-empty messages list.")
@@ -63,6 +142,14 @@ class SimpleAgent:
         return raw_messages
 
     def _execute_tool_call(self, tool_call: dict[str, Any]) -> dict[str, Any]:
+        """Execute one tool call returned by the model.
+
+        Args:
+            tool_call: Tool call payload from the assistant message.
+
+        Returns:
+            A tool role message containing the tool output.
+        """
         function_data = tool_call.get("function") or {}
         tool_name = function_data.get("name")
         if tool_name not in self.tools:
@@ -78,36 +165,13 @@ class SimpleAgent:
 
         tool_definition = self.tools[tool_name]
 
-        handler = tool_definition.handler
-
-        def _run_coroutine_sync(coro):
-            try:
-                # If no running loop, run directly
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                return asyncio.run(coro)
-            else:
-                # Running loop exists (e.g. in async servers). Run the coroutine in a new thread.
-                result: dict[str, Any] = {}
-
-                def _target() -> None:
-                    result["value"] = asyncio.run(coro)
-
-                t = threading.Thread(target=_target)
-                t.start()
-                t.join()
-                return result.get("value")
-
-        if inspect.iscoroutinefunction(handler):
-            tool_output = _run_coroutine_sync(handler(**parsed_arguments))
+        if getattr(tool_definition, "coroutine", None) is not None:
+            tool_output = _run_coroutine_sync(tool_definition.ainvoke(parsed_arguments))
         else:
-            maybe = handler(**parsed_arguments)
-            if inspect.isawaitable(maybe):
-                tool_output = _run_coroutine_sync(maybe)
-            else:
-                tool_output = maybe
+            tool_output = tool_definition.invoke(parsed_arguments)
+            if inspect.isawaitable(tool_output):
+                tool_output = _run_coroutine_sync(tool_output)
 
-        # Normalize output to a string (JSON-serialize structured results)
         if isinstance(tool_output, (dict, list)):
             content = json.dumps(tool_output)
         else:
