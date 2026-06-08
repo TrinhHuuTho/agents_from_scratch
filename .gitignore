@@ -26,5 +26,7 @@ uv.lock
 # Uncompleted files
 README.md
 
+# Agent's workspace
+workspace/
 
 
