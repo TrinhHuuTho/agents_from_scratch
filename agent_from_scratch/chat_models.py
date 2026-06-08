@@ -5,6 +5,7 @@ import requests
 
 from agent_from_scratch.config import Settings, load_settings
 
+
 @dataclass
 class ChatModel:
     """OpenRouter chat client for both chatbot and agent workflows."""

@@ -15,9 +15,7 @@ def test_tools_run_basic():
     assert weather_res
 
     translate_res = asyncio.run(
-        translate_tool.ainvoke(
-            {"text": "Bạn có khỏe không", "target_language": "en"}
-        )
+        translate_tool.ainvoke({"text": "Bạn có khỏe không", "target_language": "en"})
     )
     assert isinstance(translate_res, str)
     assert translate_res
