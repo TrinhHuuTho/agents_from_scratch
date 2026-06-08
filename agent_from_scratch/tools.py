@@ -1,12 +1,26 @@
 from __future__ import annotations
 
+from functools import wraps
 import inspect
 import json
 from typing import Any
 
 from googletrans import Translator
-from langchain.tools import tool
 import python_weather
+
+
+def tool(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+
+    wrapper.is_tool = True
+    wrapper.name = func.__name__
+    wrapper.description = func.__doc__
+    wrapper.args = inspect.signature(func)
+
+    return wrapper
+
 
 @tool
 async def get_weather(city: str) -> str:
