@@ -1,41 +1,24 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import json
 import threading
 from typing import Any
 
-from langchain_core.tools import BaseTool
-
 from agent_from_scratch.chat_models import ChatModel
+from agent_from_scratch.tools import ToolDefinition
 
 
-def _tool_to_openai_schema(tool: BaseTool) -> dict[str, Any]:
-    """Convert a LangChain tool to an OpenAI tool schema.
+def _tool_to_openai_schema(tool: ToolDefinition) -> dict[str, Any]:
+    """Convert a custom tool object to an OpenAI tool schema.
 
     Args:
-        tool: The LangChain tool to convert.
+        tool: The custom tool to convert.
 
     Returns:
         An OpenAI-compatible tool payload.
     """
-    args_schema = getattr(tool, "args_schema", None)
-    if args_schema is None:
-        parameters: dict[str, Any] = {"type": "object", "properties": {}}
-    elif hasattr(args_schema, "model_json_schema"):
-        parameters = args_schema.model_json_schema()
-    else:
-        parameters = args_schema.schema()
-
-    return {
-        "type": "function",
-        "function": {
-            "name": tool.name,
-            "description": tool.description or "",
-            "parameters": parameters,
-        },
-    }
+    return tool.to_openai_tool()
 
 
 def _run_coroutine_sync(coro: Any) -> Any:
@@ -70,7 +53,7 @@ class SimpleAgent:
         self,
         client: ChatModel,
         system_prompt: str,
-        tools: dict[str, BaseTool] | None = None,
+        tools: dict[str, ToolDefinition] | None = None,
         max_iterations: int = 6,
     ) -> None:
         """Initialize the agent.
@@ -164,13 +147,7 @@ class SimpleAgent:
             ) from exc
 
         tool_definition = self.tools[tool_name]
-
-        if getattr(tool_definition, "coroutine", None) is not None:
-            tool_output = _run_coroutine_sync(tool_definition.ainvoke(parsed_arguments))
-        else:
-            tool_output = tool_definition.invoke(parsed_arguments)
-            if inspect.isawaitable(tool_output):
-                tool_output = _run_coroutine_sync(tool_output)
+        tool_output = tool_definition.invoke(parsed_arguments)
 
         if isinstance(tool_output, (dict, list)):
             content = json.dumps(tool_output)
