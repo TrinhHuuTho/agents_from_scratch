@@ -53,7 +53,7 @@ class SimpleAgent:
         self,
         client: ChatModel,
         system_prompt: str,
-        tools: dict[str, ToolDefinition] | None = None,
+        tools: list[str] | dict[str, ToolDefinition] | None = None,
         max_iterations: int = 6,
     ) -> None:
         """Initialize the agent.
@@ -61,13 +61,22 @@ class SimpleAgent:
         Args:
             client: Chat client used for completions.
             system_prompt: Default system instruction to inject.
-            tools: Tool registry keyed by tool name.
+            tools: Tool registry keyed by tool name, or a list of tool names.
             max_iterations: Maximum tool-use iterations before failing.
         """
         self.client = client
         self.system_prompt = system_prompt
-        self.tools = tools or {}
         self.max_iterations = max_iterations
+
+        if isinstance(tools, list):
+            from agent_from_scratch.tools import TOOL_REGISTRY
+            self.tools = {
+                name: TOOL_REGISTRY[name] 
+                for name in tools 
+                if name in TOOL_REGISTRY
+            }
+        else:
+            self.tools = tools or {}
 
     def invoke(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Run the agent until it returns a final assistant message.
@@ -100,6 +109,7 @@ class SimpleAgent:
             "Agent exceeded max_iterations before producing a final answer."
         )
 
+
     def _build_messages(self, inputs: dict[str, Any]) -> list[dict[str, Any]]:
         """Validate and normalize the incoming message list.
 
@@ -123,6 +133,7 @@ class SimpleAgent:
             )
 
         return raw_messages
+
 
     def _execute_tool_call(self, tool_call: dict[str, Any]) -> dict[str, Any]:
         """Execute one tool call returned by the model.
