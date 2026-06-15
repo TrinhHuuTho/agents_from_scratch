@@ -34,29 +34,73 @@ def main() -> None:
         max_iterations=settings.max_iterations,
     )
 
-    result = agent.invoke(
+    logger.info("--- Lượt 1 ---")
+    result1 = agent.invoke(
         {
+            "thread_id": "user_123",
             "messages": [
                 {
                     "role": "user",
-                    "content":
-                    """Thực hiện các bước sau:
-                    1) Tạo file 'hello.txt' với nội dung lorem ipsum. 
-                    2) Đọc nội dung file 'hello.txt' và trả lời tôi đọc được gì.
-                    3) Liệt kê các file trong thư mục workspace và trả lời tôi có bao nhiêu file.
-                    4) Sửa file 'hello.txt', thay nội dung thành 'hello world'.",
-                    """
+                    "content": "Chào bạn, tôi tên là Thor.",
                 },
             ]
         }
     )
+    final_message1 = result1.get("messages", [])[-1] if result1.get("messages") else None
+    content1 = final_message1.get("content") if isinstance(final_message1, dict) else None
+    logger.info("User: Chào bạn, tôi tên là Thor.")
+    logger.info("Agent: %s", content1)
 
-    final_message = result.get("messages", [])[-1] if result.get("messages") else None
-    content = final_message.get("content") if isinstance(final_message, dict) else None
-    if content:
-        logger.info(content)
-    else:
-        logger.info("No final content available; final_message=%s", final_message)
+    logger.info("--- Lượt 2 ---")
+    result2 = agent.invoke(
+        {
+            "thread_id": "user_123",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Bạn có nhớ tôi tên là gì không?",
+                },
+            ]
+        }
+    )
+    final_message2 = result2.get("messages", [])[-1] if result2.get("messages") else None
+    content2 = final_message2.get("content") if isinstance(final_message2, dict) else None
+    logger.info("User: Bạn có nhớ tôi tên là gì không?")
+    logger.info("Agent: %s", content2)
+
+    logger.info("--- Lượt 3 (Pushing past max messages) ---")
+    result3 = agent.invoke(
+        {
+            "thread_id": "user_123",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Sở thích của tôi là lập trình AI và chơi game.",
+                },
+            ]
+        }
+    )
+    final_message3 = result3.get("messages", [])[-1] if result3.get("messages") else None
+    content3 = final_message3.get("content") if isinstance(final_message3, dict) else None
+    logger.info("User: Sở thích của tôi là lập trình AI và chơi game.")
+    logger.info("Agent: %s", content3)
+
+    logger.info("--- Lượt 4 (Testing Summarized Memory) ---")
+    result4 = agent.invoke(
+        {
+            "thread_id": "user_123",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Tổng hợp lại, tôi là ai và có sở thích gì?",
+                },
+            ]
+        }
+    )
+    final_message4 = result4.get("messages", [])[-1] if result4.get("messages") else None
+    content4 = final_message4.get("content") if isinstance(final_message4, dict) else None
+    logger.info("User: Tổng hợp lại, tôi là ai và có sở thích gì?")
+    logger.info("Agent: %s", content4)
 
 
 if __name__ == "__main__":
