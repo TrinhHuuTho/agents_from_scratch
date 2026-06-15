@@ -29,4 +29,5 @@ README.md
 # Agent's workspace
 workspace/
 
-
+# Database files
+*.db
