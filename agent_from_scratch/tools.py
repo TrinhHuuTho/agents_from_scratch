@@ -363,3 +363,13 @@ def create_default_tool_registry() -> dict[str, Any]:
         write_file.name: write_file,
         edit_file.name: edit_file,
     }
+
+
+TOOL_REGISTRY = {
+    "ls_tool": ls_tool,
+    "read_file": read_file,
+    "write_file": write_file,
+    "edit_file": edit_file,
+    "get_weather": get_weather,
+    "translate": translate
+}
