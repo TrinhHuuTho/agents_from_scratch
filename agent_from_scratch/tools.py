@@ -349,6 +349,25 @@ def edit_file(file_path: str, new_content: str) -> str:
     return write_file(file_path, new_content)
 
 
+@tool
+def fetch_url(url: str) -> str:
+    """Fetch text content from a given URL.
+
+    Args:
+        url: The URL to fetch.
+
+    Returns:
+        The text content of the URL.
+    """
+    import urllib.request
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req) as response:
+            return response.read().decode('utf-8')
+    except Exception as e:
+        return f"Error fetching URL: {str(e)}"
+
+
 def create_default_tool_registry() -> dict[str, Any]:
     """Build the default tool registry.
 
@@ -362,6 +381,7 @@ def create_default_tool_registry() -> dict[str, Any]:
         read_file.name: read_file,
         write_file.name: write_file,
         edit_file.name: edit_file,
+        fetch_url.name: fetch_url,
     }
 
 
@@ -371,5 +391,6 @@ TOOL_REGISTRY = {
     "write_file": write_file,
     "edit_file": edit_file,
     "get_weather": get_weather,
-    "translate": translate
+    "translate": translate,
+    "fetch_url": fetch_url,
 }
