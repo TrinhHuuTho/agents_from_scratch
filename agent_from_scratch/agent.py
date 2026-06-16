@@ -55,6 +55,7 @@ class SimpleAgent:
         self,
         client: ChatModel,
         system_prompt: str,
+        skills: list[str] | None = None,
         tools: list[str] | dict[str, ToolDefinition] | None = None,
         max_iterations: int = 6,
     ) -> None:
@@ -63,6 +64,7 @@ class SimpleAgent:
         Args:
             client: Chat client used for completions.
             system_prompt: Default system instruction to inject.
+            skills: List of skill directories to load.
             tools: Tool registry keyed by tool name, or a list of tool names.
             max_iterations: Maximum tool-use iterations before failing.
         """
@@ -81,6 +83,32 @@ class SimpleAgent:
         else:
             self.tools = tools or {}
 
+        if skills:
+            for skill_dir in skills:
+                self._load_skills_from_directory(skill_dir)
+
+    def _load_skills_from_directory(self, skill_dir: str) -> None:
+        """Load skill instructions from a directory and append them to the system prompt.
+
+        Args:
+            skill_dir: Path to the skill directory containing a SKILL.md file.
+        """
+        import os
+        import logging
+        logger = logging.getLogger(__name__)
+
+        skill_path = os.path.join(skill_dir, "SKILL.md")
+        if not os.path.isfile(skill_path):
+            logger.warning("No SKILL.md found in %s", skill_dir)
+            return
+
+        try:
+            with open(skill_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            self.system_prompt += f"\n\n<activated_skill>\n{content}\n</activated_skill>\n"
+            logger.info("Loaded skill from %s", skill_path)
+        except Exception as e:
+            logger.error("Failed to load skill from %s: %s", skill_path, e)
 
     def _summarize_thread(self, thread_id: str) -> None:
         """Summarize the thread if it's too long."""

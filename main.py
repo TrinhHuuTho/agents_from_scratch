@@ -30,77 +30,27 @@ def main() -> None:
     agent = SimpleAgent(
         client=client,
         system_prompt=settings.system_prompt,
-        tools=['ls_tool', 'read_file', 'write_file', 'edit_file'],
+        skills=['./skills/langgraph-docs'],
+        tools=['ls_tool', 'read_file', 'write_file', 'edit_file', 'fetch_url'],
         max_iterations=settings.max_iterations,
     )
 
-    logger.info("--- Lượt 1 ---")
+
     result1 = agent.invoke(
         {
             "thread_id": "user_123",
             "messages": [
                 {
                     "role": "user",
-                    "content": "Chào bạn, tôi tên là Thor.",
+                    "content": "Chào bạn, dựa vào tài liệu từ langgraph-docs. Hãy hướng dẫn tôi cách xây dựng skills cho agent from scratch nhé?",
                 },
             ]
         }
     )
     final_message1 = result1.get("messages", [])[-1] if result1.get("messages") else None
     content1 = final_message1.get("content") if isinstance(final_message1, dict) else None
-    logger.info("User: Chào bạn, tôi tên là Thor.")
+    logger.info("User: Chào bạn, dựa vào tài liệu từ langgraph-docs. Hãy hướng dẫn tôi cách xây dựng skills cho agent from scratch nhé?")
     logger.info("Agent: %s", content1)
-
-    logger.info("--- Lượt 2 ---")
-    result2 = agent.invoke(
-        {
-            "thread_id": "user_123",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": "Bạn có nhớ tôi tên là gì không?",
-                },
-            ]
-        }
-    )
-    final_message2 = result2.get("messages", [])[-1] if result2.get("messages") else None
-    content2 = final_message2.get("content") if isinstance(final_message2, dict) else None
-    logger.info("User: Bạn có nhớ tôi tên là gì không?")
-    logger.info("Agent: %s", content2)
-
-    logger.info("--- Lượt 3 (Pushing past max messages) ---")
-    result3 = agent.invoke(
-        {
-            "thread_id": "user_123",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": "Sở thích của tôi là lập trình AI và chơi game.",
-                },
-            ]
-        }
-    )
-    final_message3 = result3.get("messages", [])[-1] if result3.get("messages") else None
-    content3 = final_message3.get("content") if isinstance(final_message3, dict) else None
-    logger.info("User: Sở thích của tôi là lập trình AI và chơi game.")
-    logger.info("Agent: %s", content3)
-
-    logger.info("--- Lượt 4 (Testing Summarized Memory) ---")
-    result4 = agent.invoke(
-        {
-            "thread_id": "user_123",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": "Tổng hợp lại, tôi là ai và có sở thích gì?",
-                },
-            ]
-        }
-    )
-    final_message4 = result4.get("messages", [])[-1] if result4.get("messages") else None
-    content4 = final_message4.get("content") if isinstance(final_message4, dict) else None
-    logger.info("User: Tổng hợp lại, tôi là ai và có sở thích gì?")
-    logger.info("Agent: %s", content4)
 
 
 if __name__ == "__main__":

@@ -31,3 +31,6 @@ workspace/
 
 # Database files
 *.db
+
+# Skills directory
+skills/
