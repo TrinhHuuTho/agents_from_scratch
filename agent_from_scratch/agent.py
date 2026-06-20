@@ -58,6 +58,7 @@ class SimpleAgent:
         skills: list[str] | None = None,
         tools: list[str] | dict[str, ToolDefinition] | None = None,
         max_iterations: int = 6,
+        sensitive_tools: list[str] | None = None,
     ) -> None:
         """Initialize the agent.
 
@@ -70,8 +71,9 @@ class SimpleAgent:
         """
         self.client = client
         self.system_prompt = system_prompt
-        self.max_iterations = max_iterations
-        self.memory = SQLiteMemoryManager(max_messages=4)  # Kept small to easily trigger summarization for testing
+        self.max_iterations = 10 # Increased default for more complex interactions
+        self.memory = SQLiteMemoryManager(max_messages=4)  # Kept small for testing
+        self.sensitive_tools = sensitive_tools or []
 
         if isinstance(tools, list):
             from agent_from_scratch.tools import TOOL_REGISTRY
@@ -127,12 +129,13 @@ class SimpleAgent:
             self.memory.save_summary_and_clear(thread_id, new_summary)
 
 
-    def invoke(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        """Run the agent until it returns a final assistant message.
+    def invoke(self, inputs: dict[str, Any], user_response: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Run the agent, pausing for HITL if a sensitive tool is called.
 
         Args:
             inputs: Dictionary containing a `messages` conversation list and a `thread_id`.
-
+            user_response: Dict containing human resolution if
+                resuming (e.g., {approve, edit, reject, respond})
         Returns:
             The accumulated message list and the last assistant message.
         """
@@ -144,7 +147,7 @@ class SimpleAgent:
             raise ValueError("A 'thread_id' is required in inputs to manage memory.")
 
         new_messages = inputs.get("messages", [])
-        if new_messages:
+        if new_messages and not user_response:
             self.memory.add_messages(thread_id, new_messages)
             
         # Check if we need to summarize before getting the context window
@@ -157,8 +160,37 @@ class SimpleAgent:
         current_context = self.memory.get_messages(thread_id, self.system_prompt)
         tool_schemas = [_tool_to_openai_schema(tool) for tool in self.tools.values()]
 
+        # Handle agent loop with tool calls and HITL for sensitive tools
+        if user_response:
+            logger.info("Resuming from human response: %s", user_response)
+            pending_tool_call = user_response['tool_call']
+            desicion = user_response["decision"]
+
+            if desicion == "approve":
+                tool_result = self._execute_tool_call(pending_tool_call)
+            elif desicion == "edit":
+                pending_tool_call["function"]["arguments"] = json.dumps(user_response["edited_args"])
+                tool_result = self._execute_tool_call(pending_tool_call)
+            elif desicion == "reject":
+                tool_result = {
+                    "role": "tool",
+                    "tool_call_id": pending_tool_call.get("id"),
+                    "content": "Tool execution was explicitly denied/rejected by the human supervisor."
+                }
+            else: # Tool execution is skipped; the human’s message becomes the tool result.
+                tool_result = {
+                    "role": "tool",
+                    "tool_call_id": pending_tool_call.get("id"),
+                    "content": user_response["human_message"]
+                }
+
+            # Save the tool result (or human message) and continue the loop
+            self.memory.add_messages(thread_id, [tool_result])
+            current_context.append(tool_result)
+
         for i in range(self.max_iterations):
             logger.info(f"Agent loop iteration {i+1}...")
+
             assistant_message = self.client.chat_completion(
                 messages=current_context,
                 tools=tool_schemas or None,
@@ -171,10 +203,20 @@ class SimpleAgent:
             tool_calls = assistant_message.get("tool_calls") or []
             if not tool_calls:
                 logger.info("No tool calls, returning final message.")
-                return {"messages": current_context, "final_message": assistant_message}
+                return {"status": "completed", "messages": current_context, "final_message": assistant_message}
 
             logger.info(f"Executing {len(tool_calls)} tool calls...")
             for tool_call in tool_calls:
+                tool_name = tool_call.get("function", {}).get("name")
+
+                if tool_name in self.sensitive_tools:
+                    logger.warning(f"Interrupting loop for sensitive tool: {tool_name}")
+                    return {
+                        "status": "requires_action",
+                        "tool_call": tool_call,
+                        "message": f"Tool '{tool_name}' requires supervisor approval."
+                    }
+
                 tool_result = self._execute_tool_call(tool_call)
                 # Save tool result
                 self.memory.add_messages(thread_id, [tool_result])
