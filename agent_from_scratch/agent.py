@@ -169,7 +169,7 @@ class SimpleAgent:
             if desicion == "approve":
                 tool_result = self._execute_tool_call(pending_tool_call)
             elif desicion == "edit":
-                pending_tool_call["function"]["arguments"] = user_response["edited_args"]
+                pending_tool_call["function"]["arguments"] = json.dumps(user_response["edited_args"])
                 tool_result = self._execute_tool_call(pending_tool_call)
             elif desicion == "reject":
                 tool_result = {
