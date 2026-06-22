@@ -74,7 +74,7 @@ class SimpleAgent:
         self.client = client
         self.system_prompt = system_prompt
         self.max_iterations = max_iterations
-        self.memory = SQLiteMemoryManager(max_messages=24)
+        self.memory = SQLiteMemoryManager(max_messages=10)
         self.sensitive_tools = sensitive_tools or []
 
         if isinstance(tools, list):
@@ -89,6 +89,15 @@ class SimpleAgent:
         if skills:
             for skill_dir in skills:
                 self._load_skills_from_directory(skill_dir)
+
+        #  Add stopping instruction to system prompt
+        self.system_prompt += (
+            "\n\nIMPORTANT RULE: Once you have gathered enough information "
+            "to answer the user's question, stop calling tools immediately "
+            "and provide your final answer. Do not fetch additional documentation "
+            "if you already have what you need from the context or previous tool calls. "
+            "Aim to answer concisely with minimal tool usage."
+        )
 
     def _load_skills_from_directory(self, skill_dir: str) -> None:
         """Load skill instructions from a directory and append them to the system prompt.
@@ -143,6 +152,7 @@ class SimpleAgent:
         inputs: dict[str, Any],
         user_response: dict[str, Any] | None = None,
         runtime: Runtime | None = None,
+        current_iteration: int = 0,  #  Add parameter for tracking iteration
     ) -> dict[str, Any]:
         """Run the agent, pausing for HITL if a sensitive tool is called.
 
@@ -150,6 +160,7 @@ class SimpleAgent:
             inputs: Dictionary containing a `messages` conversation list and a `thread_id`.
             user_response: Dict containing human resolution if
                 resuming (e.g., {approve, edit, reject, respond})
+            current_iteration: Current iteration count when resuming from HITL.
         Returns:
             The accumulated message list and the last assistant message.
         """
@@ -157,7 +168,7 @@ class SimpleAgent:
 
         logger = logging.getLogger(__name__)
 
-        # Create a default Runtime if none provided (allows dependency injection)
+        # Create a default Runtime if none provided
         if runtime is None:
             runtime = Runtime()
 
@@ -169,17 +180,17 @@ class SimpleAgent:
         if new_messages and not user_response:
             self.memory.add_messages(thread_id, new_messages)
 
-        # Check if we need to summarize before getting the context window
+        # Check if we need to summarize
         if self.memory.needs_summarization(thread_id):
             logger.info("Triggering thread summarization...")
             self._summarize_thread(thread_id)
             logger.info("Summarization complete.")
 
-        # Get full context (System prompt + optional summary + recent messages)
+        # Get full context
         current_context = self.memory.get_messages(thread_id, self.system_prompt)
         tool_schemas = [_tool_to_openai_schema(tool) for tool in self.tools.values()]
 
-        # Handle agent loop with tool calls and HITL for sensitive tools
+        # Handle HITL resume
         if user_response:
             logger.info("Resuming from human response: %s", user_response)
             pending_tool_call = user_response["tool_call"]
@@ -198,19 +209,20 @@ class SimpleAgent:
                     "tool_call_id": pending_tool_call.get("id"),
                     "content": "Tool execution was explicitly denied/rejected by the human supervisor.",
                 }
-            else:  # Tool execution is skipped; the human’s message becomes the tool result.
+            else:
                 tool_result = {
                     "role": "tool",
                     "tool_call_id": pending_tool_call.get("id"),
                     "content": user_response["human_message"],
                 }
 
-            # Save the tool result (or human message) and continue the loop
+            # Save the tool result
             self.memory.add_messages(thread_id, [tool_result])
             current_context.append(tool_result)
 
-        for i in range(self.max_iterations):
-            logger.info(f"Agent loop iteration {i+1}...")
+        #  Continue loop from current_iteration
+        for i in range(current_iteration, self.max_iterations):
+            logger.info(f"Agent loop iteration {i+1}/{self.max_iterations}...")
 
             assistant_message = self.client.chat_completion(
                 messages=current_context,
@@ -240,6 +252,7 @@ class SimpleAgent:
                         "status": "requires_action",
                         "tool_call": tool_call,
                         "message": f"Tool '{tool_name}' requires supervisor approval.",
+                        "current_iteration": i + 1,  # Save the next iteration
                     }
 
                 tool_result = self._execute_tool_call(tool_call, runtime)
