@@ -13,6 +13,8 @@ from typing import Any, Callable, get_origin
 from googletrans import Translator
 import python_weather
 
+from agent_from_scratch.runtime import ToolRuntime
+
 
 def _annotation_to_schema(annotation: Any) -> dict[str, Any]:
     """Map a Python annotation to a small JSON schema fragment.
@@ -175,15 +177,19 @@ def tool(func: Callable[..., Any]) -> ToolDefinition:
 
 
 @tool
-async def get_weather(city: str) -> str:
+async def get_weather(city: str, runtime: ToolRuntime) -> str:
     """Get weather for a given city.
 
     Args:
         city: The city to look up.
+        runtime: The tool runtime instance.
 
     Returns:
         A JSON string describing the current weather.
     """
+    if runtime.stream_writer:
+        runtime.stream_writer(f"Getting weather for {city}")
+
     try:
         async with python_weather.Client() as client:
             forecast = await client.get(city)
@@ -315,12 +321,13 @@ def read_file(file_path: str) -> str:
 
 
 @tool
-def write_file(file_path: str, content: str) -> str:
+def write_file(file_path: str, content: str, runtime: ToolRuntime) -> str:
     """Write content to a file.
 
     Args:
         file_path: The path to the file to write.
         content: The content to write to the file.
+        runtime: The tool runtime instance.
 
     Returns:
         A success message or an error message if the write operation fails.
@@ -330,35 +337,47 @@ def write_file(file_path: str, content: str) -> str:
         resolved_path.parent.mkdir(parents=True, exist_ok=True)
         with open(resolved_path, "w", encoding="utf-8") as f:
             f.write(content)
+            
+        if runtime.stream_writer:
+            runtime.stream_writer(f"Successfully wrote to {file_path}.")
+            
         return f"Successfully wrote to {file_path}."
     except Exception as e:
         return f"Error writing to file: {str(e)}"
 
 
 @tool
-def edit_file(file_path: str, new_content: str) -> str:
+def edit_file(file_path: str, new_content: str, runtime: ToolRuntime) -> str:
     """Edit the contents of a file by overwriting it with new content.
 
     Args:
         file_path: The path to the file to edit.
         new_content: The new content to write to the file.
+        runtime: The tool runtime instance.
 
     Returns:
         A success message or an error message if the edit operation fails.
     """
+    if runtime.stream_writer:
+        runtime.stream_writer(f"Editing file: {file_path}")
+        
     return write_file(file_path, new_content)
 
 
 @tool
-def fetch_url(url: str) -> str:
+def fetch_url(url: str, runtime: ToolRuntime) -> str:
     """Fetch text content from a given URL.
 
     Args:
         url: The URL to fetch.
+        runtime: The tool runtime instance.
 
     Returns:
         The text content of the URL.
     """
+    if runtime.stream_writer:
+        runtime.stream_writer(f"Fetching URL: {url}")
+    
     import urllib.request
     try:
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})

@@ -12,8 +12,8 @@ class Settings:
     model: str = "deepseek/deepseek-v4-flash"
     base_url: str = "https://openrouter.ai/api/v1"
     app_name: str = "agent-from-scratch"
-    system_prompt: str = "You are a helpful assistant."
-    max_iterations: int = 6
+    system_prompt: str = "You are a helpful assistant. Once you have enough information to answer, answer immediately; don't use any additional tools."
+    max_iterations: int = 10
 
 
 def load_settings() -> Settings:
