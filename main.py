@@ -1,10 +1,12 @@
 import json
 import logging
 from urllib import response
+from dataclasses import dataclass
 
 from agent_from_scratch.agent import SimpleAgent
 from agent_from_scratch.chat_models import ChatModel
 from agent_from_scratch.config import load_settings
+from agent_from_scratch.runtime import Runtime
 
 
 def main() -> None:
@@ -38,16 +40,25 @@ def main() -> None:
         sensitive_tools=['write_file', 'edit_file', 'fetch_url']
     )
 
+    content = input("How can I help you today? ").strip()
     inputs = {
-        "thread_id": "user_789",
+        "thread_id": "user_1",
             "messages": [
                 {
                     "role": "user",
-                    "content": 'edit the file workspace\workspace\langchain_overview.md to summarize and translate the content to Vietnamese.',
+                    "content": content,
                 },
             ]
     }
-    response = agent.invoke(inputs)
+    
+    # Define a simple context class if not provided by the library
+    @dataclass
+    class MyContext:
+        user_id: str
+
+    custom_rt = Runtime(context=MyContext(user_id="test_user"))
+
+    response = agent.invoke(inputs, runtime=custom_rt)
     
     while response["status"] == "requires_action":
         print(f"\n🛑 HITL INTERRUPT: {response['message']}")
